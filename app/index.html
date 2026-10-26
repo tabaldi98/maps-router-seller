@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#b4441f">
+  <title>Rota de Vendas</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="panel">
+      <header class="brand">
+        <h1>🌶️ Rota de Vendas</h1>
+        <button id="btnMenu" class="ghost" title="Mais opções">⋯</button>
+      </header>
+
+      <section class="card" id="cardOrigem">
+        <label class="lbl" for="txtEndereco">Onde você está?</label>
+        <div class="row">
+          <input id="txtEndereco" type="search" placeholder="Endereço, bairro ou cidade" autocomplete="street-address">
+          <button id="btnBuscarEnd" title="Buscar endereço">🔎</button>
+        </div>
+        <div class="row">
+          <button id="btnGps" class="primary wide">📍 Usar minha localização</button>
+        </div>
+        <p class="hint">Ou toque no mapa para marcar o ponto de partida.</p>
+        <p id="txtOrigem" class="origem"></p>
+      </section>
+
+      <section class="card">
+        <label class="lbl">Raio
+          <select id="selRaio">
+            <option value="1000">1 km</option>
+            <option value="2000" selected>2 km</option>
+            <option value="3000">3 km</option>
+            <option value="5000">5 km</option>
+            <option value="8000">8 km</option>
+            <option value="12000">12 km</option>
+            <option value="20000">20 km</option>
+            <option value="30000">30 km</option>
+            <option value="40000">40 km</option>
+            <option value="50000">50 km</option>
+            <option value="100000">100 km</option>
+          </select>
+        </label>
+        <div class="chips" id="chipsCat"></div>
+        <p class="hint">A rota passa pelos 99 mais próximos (limite do serviço de rotas).</p>
+        <div class="row">
+          <button id="btnRota" class="primary wide" disabled>🚗 Buscar restaurantes e montar rota</button>
+        </div>
+      </section>
+
+      <section id="resumo" class="card hidden">
+        <div class="stats">
+          <div><b id="stTotal">0</b><span>na região</span></div>
+          <div><b id="stParadas">0</b><span>paradas</span></div>
+          <div><b id="stKm">0</b><span>km</span></div>
+          <div><b id="stMin">0</b><span>min dirigindo</span></div>
+        </div>
+        <p id="txtFonte" class="hint"></p>
+        <div id="linksGmaps" class="links"></div>
+        <div class="row">
+          <button id="btnCsv" class="wide">⬇️ Baixar rota (CSV)</button>
+        </div>
+      </section>
+
+      <div class="tabs hidden" id="tabs">
+        <button data-tab="rota" class="on">Rota</button>
+        <button data-tab="todos">Todos por perto</button>
+      </div>
+      <ol id="lista" class="lista"></ol>
+
+      <footer class="foot">
+        Dados: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
+        · rotas <a href="https://project-osrm.org" target="_blank" rel="noopener">OSRM</a>
+        · base do scraper <a href="https://github.com/gosom/google-maps-scraper" target="_blank" rel="noopener">gosom</a>
+      </footer>
+    </aside>
+
+    <main id="mapa"></main>
+  </div>
+
+  <dialog id="dlgMenu">
+    <form method="dialog" class="dlg">
+      <h2>Opções</h2>
+      <h3>TomTom ao vivo</h3>
+      <p class="hint">Busca os restaurantes atuais na base da TomTom (grátis: 2.500 buscas por dia, sem cartão).
+        A chave fica salva só neste aparelho. Como criar a chave: veja o README do projeto.</p>
+      <label class="check"><input type="checkbox" id="chkTT"> Usar TomTom ao vivo</label>
+      <label class="lbl">Chave da API da TomTom
+        <input id="txtTTKey" type="password" placeholder="Cole a chave aqui" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="lbl">Limite de buscas por dia (máx. 2.500)
+        <input id="numTTDia" type="number" min="0" max="2500" step="100">
+      </label>
+      <p id="txtTTUso" class="hint"></p>
+      <button type="button" id="btnTTCache" class="ghost small">Limpar cache da TomTom</button>
+
+      <h3>Dados do scraper (Google Maps)</h3>
+      <p class="hint">Importe o CSV gerado pelo kit para ter telefone, nota e avaliações. O CSV precisa
+        das colunas <code>latitude</code> e <code>longitude</code> (rode o scraper com <code>--full</code>).
+        Fica salvo só neste aparelho.</p>
+      <input type="file" id="fileCsv" accept=".csv,text/csv">
+      <p id="txtImport" class="hint"></p>
+      <button type="button" id="btnLimparImport" class="ghost small">Remover dados importados</button>
+
+      <h3>Visitas</h3>
+      <p class="hint">Os status (visitado, cliente...) ficam salvos no navegador. Faça backup para passar para outro aparelho.</p>
+      <div class="row">
+        <button type="button" id="btnBackup">⬇️ Exportar backup</button>
+        <label class="btn">⬆️ Importar backup<input type="file" id="fileBackup" accept=".json" hidden></label>
+      </div>
+      <div class="row"><button value="close" class="primary wide">Fechar</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

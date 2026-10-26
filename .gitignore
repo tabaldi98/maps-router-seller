@@ -1,0 +1,8 @@
+# Saídas do scraper (dados pessoais: nunca versionar)
+*.csv
+gmaps-output/
+
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
