@@ -74,9 +74,9 @@ O CSV precisa das colunas `latitude` e `longitude` (o `scrape_regiao.py` já rod
 Quando o mesmo restaurante vem de duas fontes, o app junta e fica com os dados do Google (telefone, nota).
 
 ## Publicação (GitHub Pages)
-O site fica em **https://tabaldi98.github.io/maps-router-seller/**. O workflow
-`.github/workflows/pages.yml` publica a pasta `app/` a cada push na `main`
-(em **Settings → Pages**, a fonte precisa estar como **GitHub Actions**).
+O site fica em **https://tabaldi98.github.io/maps-router-seller/** (abre o app em `app/`).
+O GitHub Pages publica a branch `main` direto (**Settings → Pages → Deploy from a branch → main / root**):
+cada push atualiza o site em 1 ou 2 minutos. O `.nojekyll` faz o GitHub servir os arquivos como estão.
 No celular, abra o endereço e use **Adicionar à tela inicial** para ter como um app.
 O GPS só funciona em HTTPS (o GitHub Pages já é).
 
