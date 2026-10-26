@@ -33,9 +33,11 @@ Google Maps, de graça.
 1. Acesse https://developer.tomtom.com e clique em **Register** (pede nome, e-mail e senha; não pede cartão nem CPF).
 2. Confirme o e-mail e entre no **Dashboard** (https://developer.tomtom.com/user/me/apps).
 3. A TomTom já cria uma chave chamada *My first API key*. Clique nela e copie a chave.
-4. No celular, abra o app → **⋯** → cole em *Chave da API da TomTom* → marque *Usar TomTom ao vivo*.
+4. Coloque a chave em `app/config.js` (`tomtomKey`), faça commit e push: o site já abre com a TomTom
+   ligada em qualquer aparelho. Uma chave colada no menu **⋯** tem prioridade naquele aparelho.
+5. **Importante:** `config.js` é público. No painel da TomTom, ligue o **Domain whitelist** da chave só
+   para `tabaldi98.github.io` (e `localhost`, se for testar no PC), senão qualquer um pode gastar sua cota.
 
-A chave fica salva **só no navegador daquele aparelho**: não vai para o GitHub nem para o backup de visitas.
 Passando de 2.500 buscas no dia, a TomTom só responde com erro (o app usa o OpenStreetMap); não há cobrança.
 
 ## Base salva da região (Grande Florianópolis)

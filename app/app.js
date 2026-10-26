@@ -219,8 +219,12 @@ function merge(osm, google) {
 }
 
 // ---------- TomTom ao vivo (Search API, plano grátis: 2.500 buscas/dia, sem cartão) ----------
-// A chave fica só no localStorage deste aparelho; nunca vai para o código publicado.
-const ttcfg = () => ({ on: false, key: '', daily: 2000, ...store.get('tomtom', {}) });
+// Chave padrão do site (config.js); uma chave colada no menu ⋯ tem prioridade neste aparelho.
+const SITE_TT_KEY = window.RV_CONFIG?.tomtomKey || '';
+const ttcfg = () => {
+  const s = store.get('tomtom', {});
+  return { on: !!SITE_TT_KEY, daily: 2000, ...s, key: s.key || SITE_TT_KEY };
+};
 
 function ttusage() {
   const now = new Date(), month = now.toISOString().slice(0, 7), day = now.toISOString().slice(0, 10);
@@ -791,7 +795,8 @@ $('#lista').addEventListener('change', (e) => {
 $('#btnMenu').addEventListener('click', () => {
   const cfg = ttcfg();
   $('#chkTT').checked = cfg.on;
-  $('#txtTTKey').value = cfg.key;
+  $('#txtTTKey').value = store.get('tomtom', {}).key || '';
+  $('#txtTTKey').placeholder = SITE_TT_KEY ? 'Usando a chave do site' : 'Cole a chave aqui';
   $('#numTTDia').value = cfg.daily;
   updateImportInfo();
   updateTomTomInfo();
@@ -802,7 +807,7 @@ $('#btnMenu').addEventListener('click', () => {
     on: $('#chkTT').checked, key: $('#txtTTKey').value.trim(),
     daily: Math.min(2500, Math.max(0, +$('#numTTDia').value || 0)),
   });
-  if ($('#chkTT').checked && !$('#txtTTKey').value.trim()) toast('Cole a chave da TomTom para ativar.');
+  if ($('#chkTT').checked && !$('#txtTTKey').value.trim() && !SITE_TT_KEY) toast('Cole a chave da TomTom para ativar.');
 }));
 $('#btnTTCache').addEventListener('click', () => {
   store.set('ttcache', []);
