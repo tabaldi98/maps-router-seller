@@ -61,7 +61,7 @@ code { font-size: 12px; background: var(--line); padding: 1px 4px; border-radius
 .lbl { display: block; font-size: 13px; font-weight: 600; color: var(--muted); }
 .lbl select { margin-top: 4px; }
 .lbl.sub { margin-top: 12px; }
-#rowHora { margin-top: 8px; }
+.chip small { font-weight: 500; opacity: .8; }
 .meta.hor { color: var(--text); }
 .meta.hor.unknown { color: var(--muted); font-style: italic; }
 .hint { font-size: 12.5px; color: var(--muted); margin: 6px 0 0; }

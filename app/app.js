@@ -64,7 +64,7 @@ const state = {
   route: null,                             // {stops, legs, geometry, km, min, engine}
   tab: 'rota',
   selected: null,
-  horario: { refeicao: 'almoco', dia: 0, semInfo: true, ...store.get('horario2', {}) },   // filtro de funcionamento
+  horario: { refeicoes: ['almoco'], semInfo: true, ...store.get('horario3', {}) },   // filtro de funcionamento
 };
 
 // ---------- helpers ----------
@@ -574,8 +574,8 @@ async function buildRoute() {
     const nLive = all.filter((p) => p.live).length;
     const updated = saved ? state.region.updated.split('-').reverse().join('/') : '';
     const semInfo = all.filter((p) => !p.hours).length;
-    const filtroTxt = ` · ${all.length - semInfo} abertos ${descreveAlvo(when)}`
-      + (semInfo ? ` + ${semInfo} sem horário informado` : '')
+    const filtroTxt = (when.refs.length ? ` · ${all.length - semInfo} abertos ${descreveAlvo(when)}`
+      + (semInfo ? ` + ${semInfo} sem horário informado` : '') : '')
       + (inRadius.length > all.length ? ` · ${inRadius.length - all.length} fora dos filtros` : '');
     $('#txtFonte').textContent = live
       ? `${nLive} da TomTom ao vivo (${live.calls} buscas novas, ${live.cached} do cache · `
@@ -620,27 +620,27 @@ const sameDay = (a, b) => a.toDateString() === b.toDateString();
 
 // Janelas das refeições (minutos do dia). O lugar passa se fica aberto pelo menos MIN_ABERTO minutos dentro dela.
 const REFEICOES = {
-  cafe: { label: 'Aberto para café da manhã', curto: 'no café da manhã', s: 6 * 60 + 30, e: 10 * 60 },
-  almoco: { label: 'Aberto para almoço', curto: 'no almoço', s: 11 * 60, e: 14 * 60 + 30 },
-  jantar: { label: 'Aberto para jantar', curto: 'no jantar', s: 18 * 60 + 30, e: 22 * 60 + 30 },
+  cafe: { label: 'Café da manhã', curto: 'café da manhã', s: 6 * 60 + 30, e: 10 * 60 },
+  almoco: { label: 'Almoço', curto: 'almoço', s: 11 * 60, e: 14 * 60 + 30 },
+  jantar: { label: 'Jantar', curto: 'jantar', s: 18 * 60 + 30, e: 22 * 60 + 30 },
 };
 const MIN_ABERTO = 60;
 
-// Refeição e dia escolhidos: {ref, day (meia-noite do dia)}.
+// Refeições escolhidas (hoje): {refs, day (meia-noite de hoje)}. Nenhuma escolhida = sem filtro de horário.
 function horarioAlvo() {
-  const h = state.horario;
   const day = new Date();
-  day.setDate(day.getDate() + (+h.dia || 0));
   day.setHours(0, 0, 0, 0);
-  return { ref: REFEICOES[h.refeicao] || REFEICOES.almoco, day };
+  return { refs: Object.keys(REFEICOES).filter((k) => state.horario.refeicoes.includes(k)).map((k) => REFEICOES[k]), day };
 }
+// Passa se abre pelo menos MIN_ABERTO minutos em qualquer uma das refeições escolhidas.
 function passaHorario(p, alvo) {
-  const m = openMinutes(p.hours, alvo.day, alvo.ref.s, alvo.ref.e);
-  return m === null ? state.horario.semInfo : m >= Math.min(MIN_ABERTO, alvo.ref.e - alvo.ref.s);
+  if (!alvo.refs.length) return true;
+  if (!p.hours) return state.horario.semInfo;
+  return alvo.refs.some((r) => openMinutes(p.hours, alvo.day, r.s, r.e) >= Math.min(MIN_ABERTO, r.e - r.s));
 }
 function descreveAlvo(alvo) {
-  const dia = sameDay(alvo.day, new Date()) ? 'de hoje' : `de ${DIAS[alvo.day.getDay()]}`;
-  return `${alvo.ref.curto} ${dia}`;
+  const nomes = alvo.refs.map((r) => r.curto);
+  return `hoje no ${nomes.length > 1 ? nomes.slice(0, -1).join(', ') + ' ou ' + nomes.at(-1) : nomes[0]}`;
 }
 
 // ---------- lista ----------
@@ -801,25 +801,29 @@ function refazerRota() {
 }
 
 function renderHorario() {
-  const h = state.horario, hoje = new Date();
-  $('#selDia').innerHTML = [0, 1, 2, 3, 4, 5, 6].map((i) => {
-    const d = new Date(hoje);
-    d.setDate(hoje.getDate() + i);
-    const nome = i === 0 ? 'Hoje' : i === 1 ? 'Amanhã' : DIAS[d.getDay()];
-    return `<option value="${i}">${nome} (${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')})</option>`;
-  }).join('');
-  $('#selHorario').innerHTML = Object.entries(REFEICOES).map(([k, r]) =>
-    `<option value="${k}">${r.label} (${hhmm(r.s)}–${hhmm(r.e)})</option>`).join('');
-  $('#selHorario').value = h.refeicao;
-  $('#selDia').value = String(h.dia);
+  const h = state.horario;
+  $('#chipsRef').innerHTML = Object.entries(REFEICOES).map(([k, r]) =>
+    `<button class="chip${h.refeicoes.includes(k) ? ' on' : ''}" data-ref="${k}" title="${hhmm(r.s)}–${hhmm(r.e)}">`
+    + `${r.label} <small>${hhmm(r.s)}–${hhmm(r.e)}</small></button>`).join('');
   $('#chkSemInfo').checked = h.semInfo;
+  $('#rowSemInfo').classList.toggle('hidden', !h.refeicoes.length);
 }
-['#selHorario', '#selDia', '#chkSemInfo'].forEach((sel) => $(sel).addEventListener('change', () => {
-  state.horario = { refeicao: $('#selHorario').value, dia: +$('#selDia').value, semInfo: $('#chkSemInfo').checked };
-  store.set('horario2', state.horario);
+function salvarHorario() {
+  store.set('horario3', state.horario);
   renderHorario();
   refazerRota();
-}));
+}
+$('#chipsRef').addEventListener('click', (e) => {
+  const k = e.target.closest('[data-ref]')?.dataset.ref;
+  if (!k) return;
+  const r = state.horario.refeicoes;
+  state.horario.refeicoes = r.includes(k) ? r.filter((x) => x !== k) : [...r, k];
+  salvarHorario();
+});
+$('#chkSemInfo').addEventListener('change', () => {
+  state.horario.semInfo = $('#chkSemInfo').checked;
+  salvarHorario();
+});
 
 $('#btnGps').addEventListener('click', () => {
   if (!navigator.geolocation) return toast('Seu navegador não tem GPS.');
