@@ -9,9 +9,11 @@ todos os restaurantes por perto e monta a **melhor rota de carro** para visitar 
 - **Filtro por tipo:** restaurantes, pizzarias, churrascarias, japonês, hamburguerias, lanchonetes,
   bares, sorveterias e açaí, padarias, cafés e açougues. O tipo vem da categoria da fonte e das palavras
   do nome ("Pizzaria Sonho Real" é pizzaria mesmo cadastrada como fast food).
-- **Filtro por horário:** qualquer horário, aberto agora ou aberto num dia e hora dos próximos 7 dias
-  (opção de incluir quem não informa horário). Cada lugar mostra se está aberto, quando fecha/abre e o
-  horário do dia. Horários vêm da TomTom (~70% dos lugares), do OpenStreetMap e do scraper.
+- **Filtro de funcionamento:** aberto para **café da manhã** (06:30–10:00), **almoço** (11:00–14:30, o
+  padrão) ou **jantar** (18:30–22:30), hoje ou num dos próximos 7 dias. Passa quem fica aberto pelo menos
+  1 hora dentro da janela; dá para incluir ou não quem não informa horário. Cada lugar mostra se está
+  aberto, quando fecha/abre e o horário do dia. Horários vêm da TomTom (~70% dos lugares), do
+  OpenStreetMap e do scraper. As janelas ficam em `REFEICOES`, no `app/app.js`.
 - **Melhor rota:** pega os 99 mais próximos que passam nos filtros (limite do servidor de rotas) e calcula
   a ordem de visita que roda menos km em ruas reais (OSRM). Mudar um filtro refaz a rota.
 - **Navegação:** botão para abrir a rota inteira no Google Maps (dividida em trechos, porque o Google

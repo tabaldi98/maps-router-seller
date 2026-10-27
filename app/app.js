@@ -64,7 +64,7 @@ const state = {
   route: null,                             // {stops, legs, geometry, km, min, engine}
   tab: 'rota',
   selected: null,
-  horario: { modo: 'qualquer', dia: 0, hora: '10:00', semInfo: true, ...store.get('horario', {}) },
+  horario: { refeicao: 'almoco', dia: 0, semInfo: true, ...store.get('horario2', {}) },   // filtro de funcionamento
 };
 
 // ---------- helpers ----------
@@ -568,14 +568,14 @@ async function buildRoute() {
       .filter((p) => p.dist <= radius);
     const all = inRadius.filter(keep).sort((a, b) => a.dist - b.dist);
     state.nearby = all;
-    state.when = when;
+    state.when = when.day;
 
     const nG = all.filter((p) => p.src === 'google').length;
     const nLive = all.filter((p) => p.live).length;
     const updated = saved ? state.region.updated.split('-').reverse().join('/') : '';
-    const semInfo = when ? all.filter((p) => !p.hours).length : 0;
-    const filtroTxt = (when ? ` · ${all.length - semInfo} abertos ${descreveAlvo(when)}`
-      + (semInfo ? ` + ${semInfo} sem horário informado` : '') : '')
+    const semInfo = all.filter((p) => !p.hours).length;
+    const filtroTxt = ` · ${all.length - semInfo} abertos ${descreveAlvo(when)}`
+      + (semInfo ? ` + ${semInfo} sem horário informado` : '')
       + (inRadius.length > all.length ? ` · ${inRadius.length - all.length} fora dos filtros` : '');
     $('#txtFonte').textContent = live
       ? `${nLive} da TomTom ao vivo (${live.calls} buscas novas, ${live.cached} do cache · `
@@ -618,26 +618,29 @@ async function buildRoute() {
 // ---------- filtro de horário ----------
 const sameDay = (a, b) => a.toDateString() === b.toDateString();
 
-// Data/hora que o lugar precisa estar aberto, ou null (qualquer horário).
+// Janelas das refeições (minutos do dia). O lugar passa se fica aberto pelo menos MIN_ABERTO minutos dentro dela.
+const REFEICOES = {
+  cafe: { label: 'Aberto para café da manhã', curto: 'no café da manhã', s: 6 * 60 + 30, e: 10 * 60 },
+  almoco: { label: 'Aberto para almoço', curto: 'no almoço', s: 11 * 60, e: 14 * 60 + 30 },
+  jantar: { label: 'Aberto para jantar', curto: 'no jantar', s: 18 * 60 + 30, e: 22 * 60 + 30 },
+};
+const MIN_ABERTO = 60;
+
+// Refeição e dia escolhidos: {ref, day (meia-noite do dia)}.
 function horarioAlvo() {
   const h = state.horario;
-  if (h.modo === 'agora') return new Date();
-  if (h.modo !== 'hora') return null;
-  const d = new Date();
-  d.setDate(d.getDate() + (+h.dia || 0));
-  const [hh, mm] = (h.hora || '10:00').split(':').map(Number);
-  d.setHours(hh, mm, 0, 0);
-  return d;
+  const day = new Date();
+  day.setDate(day.getDate() + (+h.dia || 0));
+  day.setHours(0, 0, 0, 0);
+  return { ref: REFEICOES[h.refeicao] || REFEICOES.almoco, day };
 }
-function passaHorario(p, when) {
-  if (!when) return true;
-  const o = openAt(p.hours, when);
-  return o === true || (o === null && state.horario.semInfo);
+function passaHorario(p, alvo) {
+  const m = openMinutes(p.hours, alvo.day, alvo.ref.s, alvo.ref.e);
+  return m === null ? state.horario.semInfo : m >= Math.min(MIN_ABERTO, alvo.ref.e - alvo.ref.s);
 }
-function descreveAlvo(when) {
-  if (state.horario.modo === 'agora') return 'agora';
-  const dia = sameDay(when, new Date()) ? 'hoje' : DIAS[when.getDay()];
-  return `${dia} às ${String(when.getHours()).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}`;
+function descreveAlvo(alvo) {
+  const dia = sameDay(alvo.day, new Date()) ? 'de hoje' : `de ${DIAS[alvo.day.getDay()]}`;
+  return `${alvo.ref.curto} ${dia}`;
 }
 
 // ---------- lista ----------
@@ -805,19 +808,15 @@ function renderHorario() {
     const nome = i === 0 ? 'Hoje' : i === 1 ? 'Amanhã' : DIAS[d.getDay()];
     return `<option value="${i}">${nome} (${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')})</option>`;
   }).join('');
-  $('#selHorario').value = h.modo;
+  $('#selHorario').innerHTML = Object.entries(REFEICOES).map(([k, r]) =>
+    `<option value="${k}">${r.label} (${hhmm(r.s)}–${hhmm(r.e)})</option>`).join('');
+  $('#selHorario').value = h.refeicao;
   $('#selDia').value = String(h.dia);
-  $('#txtHora').value = h.hora;
   $('#chkSemInfo').checked = h.semInfo;
-  $('#rowHora').classList.toggle('hidden', h.modo !== 'hora');
-  $('#rowSemInfo').classList.toggle('hidden', h.modo === 'qualquer');
 }
-['#selHorario', '#selDia', '#txtHora', '#chkSemInfo'].forEach((sel) => $(sel).addEventListener('change', () => {
-  state.horario = {
-    modo: $('#selHorario').value, dia: +$('#selDia').value, hora: $('#txtHora').value || '10:00',
-    semInfo: $('#chkSemInfo').checked,
-  };
-  store.set('horario', state.horario);
+['#selHorario', '#selDia', '#chkSemInfo'].forEach((sel) => $(sel).addEventListener('change', () => {
+  state.horario = { refeicao: $('#selHorario').value, dia: +$('#selDia').value, semInfo: $('#chkSemInfo').checked };
+  store.set('horario2', state.horario);
   renderHorario();
   refazerRota();
 }));

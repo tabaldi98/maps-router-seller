@@ -125,6 +125,14 @@ function openAt(hours, date) {
   return weekIntervals(hours).some(([s, e]) => s <= w && w < e);
 }
 
+// Minutos em que o lugar fica aberto entre inícioMin e fimMin do dia `day` (0 se fechado), ou null se desconhecido.
+function openMinutes(hours, day, startMin, endMin) {
+  if (!hours) return null;
+  const base = day.getDay() * 1440;
+  const a = base + startMin, b = base + endMin;
+  return weekIntervals(hours).reduce((sum, [s, e]) => sum + Math.max(0, Math.min(b, e) - Math.max(a, s)), 0);
+}
+
 // Texto curto para a lista: "🟢 Aberto · fecha 23:00", "🔴 Fechado · abre qua 11:00".
 function describeHours(hours, date) {
   if (!hours) return '';
