@@ -5,10 +5,15 @@ todos os restaurantes por perto e monta a **melhor rota de carro** para visitar 
 
 ## O que faz
 - **Onde estou:** GPS do celular, endereço digitado ou toque no mapa.
-- **Restaurantes por perto:** busca ao vivo no OpenStreetMap (restaurantes, lanchonetes, bares e,
-  se quiser, padarias, cafés e açougues) num raio de 1 a 100 km.
-- **Melhor rota:** pega os 99 mais próximos (limite do servidor de rotas) e calcula a ordem de visita
-  que roda menos km em ruas reais (OSRM).
+- **Restaurantes por perto:** TomTom ao vivo (ou a base do OpenStreetMap) num raio de 1 a 100 km.
+- **Filtro por tipo:** restaurantes, pizzarias, churrascarias, japonês, hamburguerias, lanchonetes,
+  bares, sorveterias e açaí, padarias, cafés e açougues. O tipo vem da categoria da fonte e das palavras
+  do nome ("Pizzaria Sonho Real" é pizzaria mesmo cadastrada como fast food).
+- **Filtro por horário:** qualquer horário, aberto agora ou aberto num dia e hora dos próximos 7 dias
+  (opção de incluir quem não informa horário). Cada lugar mostra se está aberto, quando fecha/abre e o
+  horário do dia. Horários vêm da TomTom (~70% dos lugares), do OpenStreetMap e do scraper.
+- **Melhor rota:** pega os 99 mais próximos que passam nos filtros (limite do servidor de rotas) e calcula
+  a ordem de visita que roda menos km em ruas reais (OSRM). Mudar um filtro refaz a rota.
 - **Navegação:** botão para abrir a rota inteira no Google Maps (dividida em trechos, porque o Google
   limita as paradas por link) e botões por restaurante para Google Maps, Waze e ligar.
 - **Controle de visitas:** marque cada lugar como *Visitado*, *Interessado*, *Cliente* ou *Sem

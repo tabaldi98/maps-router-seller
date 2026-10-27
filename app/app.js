@@ -19,17 +19,28 @@ const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 const TOMTOM = 'https://api.tomtom.com/search/2';
 const TT_TARGET = 150;         // para de buscar quando os 150 mais próximos estão garantidos (a rota usa 99)
 const TT_CACHE_DAYS = 7;
+const TT_MAX_CALLS = 40;       // buscas por rota, no máximo
 const TT_CACHE_MAX = 300;      // buscas guardadas no cache
 
-// osm: etiquetas do OpenStreetMap; tt: nomes de categoria da TomTom; words: termos para o plano B (Photon).
+// Tipos de estabelecimento (na ordem dos botões). osm: etiquetas do OpenStreetMap; food: na TomTom fica dentro
+// de "Restaurant" (7315); tt: nomes de categoria da TomTom; txt: palavras no nome ou na categoria (sem acento);
+// words: busca por nome no plano B (Photon).
 const CATS = {
-  restaurante: { label: 'Restaurantes', on: true, osm: ['amenity=restaurant', 'amenity=food_court'], tt: /^restaurant$/i, words: ['restaurante', 'pizzaria', 'churrascaria', 'cantina', 'sushi', 'comida', 'grill'] },
-  lanchonete: { label: 'Lanchonetes', on: true, osm: ['amenity=fast_food'], tt: /fast food|snack|take ?away|sandwich|hamburger|burger/i, words: ['lanchonete', 'lanches', 'burger', 'pastel', 'esfiha'] },
-  bar: { label: 'Bares', on: true, osm: ['amenity=bar', 'amenity=pub', 'amenity=biergarten'], tt: /^(?!caf).*\b(bar|pub)\b|beer/i, words: ['bar', 'boteco', 'choperia'] },
-  padaria: { label: 'Padarias', on: false, osm: ['shop=bakery', 'shop=pastry'], tt: /baker|pastry|patisserie/i, words: ['padaria', 'panificadora', 'confeitaria'] },
-  cafe: { label: 'Cafés', on: false, osm: ['amenity=cafe'], tt: /^caf[eé](?!\/)|coffee|tea house/i, words: ['café', 'cafeteria'] },
-  acougue: { label: 'Açougues', on: false, osm: ['shop=butcher'], tt: /butcher/i, words: ['açougue', 'carnes'] },
+  restaurante: { label: 'Restaurantes', on: true, food: true, osm: ['amenity=restaurant', 'amenity=food_court'], tt: /^restaurant$/i, txt: null, words: ['restaurante', 'comida', 'cantina', 'buffet'] },
+  pizzaria: { label: 'Pizzarias', on: true, food: true, osm: ['amenity=restaurant', 'amenity=fast_food'], tt: /pizza/i, txt: /pizz/, words: ['pizzaria'] },
+  churrascaria: { label: 'Churrascarias', on: true, food: true, osm: ['amenity=restaurant'], tt: /barbecue|steak house|grill/i, txt: /churrasc|steak|barbecue|bbq|espeto|galeto|costela|parrilla|assados|\bgrill/, words: ['churrascaria', 'espeto', 'galeto'] },
+  japones: { label: 'Japonês', on: true, food: true, osm: ['amenity=restaurant'], tt: /japanese|sushi|teppanyaki/i, txt: /japon|japan|sushi|temak|sashimi|yakisoba|teppan|\bpoke\b|ramen/, words: ['sushi', 'japonês', 'temakeria'] },
+  hamburgueria: { label: 'Hamburguerias', on: true, food: true, osm: ['amenity=fast_food', 'amenity=restaurant'], tt: /hamburger/i, txt: /hamburg|burger|smash/, words: ['hamburgueria', 'burger'] },
+  lanchonete: { label: 'Lanchonetes', on: true, food: true, osm: ['amenity=fast_food'], tt: /fast food|snacks|sandwich|takeout/i, txt: /lanch|fast food|snack|sanduich|sandwich|pastel|esfiha|cachorro|hot ?dog|takeout|take ?away|salgad/, words: ['lanchonete', 'lanches', 'pastel', 'esfiha'] },
+  bar: { label: 'Bares', on: true, osm: ['amenity=bar', 'amenity=pub', 'amenity=biergarten'], tt: /^(bar|pub|cocktail bar|wine bar)$/i, txt: /\bbar\b|boteco|botequim|\bpub\b|choperia|chopp|cervejaria|petiscaria|nightlife/, words: ['bar', 'boteco', 'choperia'] },
+  sorveteria: { label: 'Sorveterias e açaí', on: false, food: true, osm: ['amenity=ice_cream'], tt: /ice cream|yogurt/i, txt: /sorvet|gelato|ice cream|acai|yogurt|iogurte|frozen|paleteria/, words: ['sorveteria', 'açaí', 'gelato'] },
+  padaria: { label: 'Padarias', on: false, osm: ['shop=bakery', 'shop=pastry'], tt: /^bakery$/i, txt: /padaria|panificadora|panificacao|confeitaria|bakery|baker|pastry|doceria/, words: ['padaria', 'panificadora', 'confeitaria'] },
+  cafe: { label: 'Cafés', on: false, osm: ['amenity=cafe'], tt: /^caf[eé]$|coffee shop|cafeteria|tea house/i, txt: /\bcafe\b|cafeteria|coffee|tea house/, words: ['café', 'cafeteria'] },
+  acougue: { label: 'Açougues', on: false, osm: ['shop=butcher'], tt: /^butcher$/i, txt: /acougue|butcher|casa de carnes/, words: ['açougue', 'carnes'] },
 };
+// Ordem de classificação: o tipo mais específico primeiro ("Pizzaria e Lanchonete" é pizzaria).
+const CAT_PRIORITY = ['sorveteria', 'pizzaria', 'japones', 'churrascaria', 'hamburgueria', 'padaria', 'acougue',
+  'cafe', 'lanchonete', 'bar', 'restaurante'];
 const STATUS = {
   visitado: 'Visitado', interessado: 'Interessado', cliente: 'Cliente', sem_interesse: 'Sem interesse',
 };
@@ -44,7 +55,7 @@ const store = {
 
 const state = {
   origin: store.get('origin', null),       // {lat, lon, label}
-  cats: store.get('cats', Object.fromEntries(Object.entries(CATS).map(([k, c]) => [k, c.on]))),
+  cats: { ...Object.fromEntries(Object.entries(CATS).map(([k, c]) => [k, c.on])), ...store.get('cats', {}) },
   marks: store.get('marks', {}),           // id -> {s: status, n: nota, t: timestamp}
   imported: store.get('imported', []),     // lugares do CSV importado
   bundled: [],                             // lugares de restaurantes.json
@@ -53,6 +64,7 @@ const state = {
   route: null,                             // {stops, legs, geometry, km, min, engine}
   tab: 'rota',
   selected: null,
+  horario: { modo: 'qualquer', dia: 0, hora: '10:00', semInfo: true, ...store.get('horario', {}) },
 };
 
 // ---------- helpers ----------
@@ -96,25 +108,24 @@ async function fetchJson(url, opts = {}, timeoutMs = 30000) {
 }
 
 // ---------- categorias ----------
-function catFromOsm(tags) {
-  for (const [k, c] of Object.entries(CATS)) {
-    if (c.osm.some((kv) => { const [a, b] = kv.split('='); return tags[a] === b; })) return k;
-  }
-  return 'restaurante';
+// Tipo pelas palavras do nome/categoria; se nenhuma bater, fica o tipo da fonte (etiqueta OSM, categoria TomTom).
+function classify(text, base = 'restaurante') {
+  const t = fold(text);
+  return CAT_PRIORITY.find((k) => CATS[k].txt?.test(t)) || base;
 }
-function catFromText(t) {
-  const s = normName(t);
-  if (/padaria|confeitaria|panificadora|bakery/.test(s)) return 'padaria';
-  if (/acougue|butcher|casa de carnes/.test(s)) return 'acougue';
-  if (/\bbar\b|boteco|pub|choperia|cervejaria|botequim/.test(' ' + s + ' ')) return 'bar';
-  if (/lanch|hamburg|burger|fast food|pastel|hot dog|cachorro|acai|sorvet/.test(s)) return 'lanchonete';
-  if (/cafe|cafeteria|coffee/.test(s)) return 'cafe';
-  return 'restaurante';
+const OSM_BASE = {
+  'amenity=restaurant': 'restaurante', 'amenity=food_court': 'restaurante', 'amenity=fast_food': 'lanchonete',
+  'amenity=bar': 'bar', 'amenity=pub': 'bar', 'amenity=biergarten': 'bar', 'amenity=ice_cream': 'sorveteria',
+  'shop=bakery': 'padaria', 'shop=pastry': 'padaria', 'amenity=cafe': 'cafe', 'shop=butcher': 'acougue',
+};
+function catFromOsm(tags) {
+  const kv = Object.keys(OSM_BASE).find((x) => { const [a, b] = x.split('='); return tags[a] === b; });
+  return classify(`${tags.cuisine || ''} ${tags.name || ''}`, OSM_BASE[kv] || 'restaurante');
 }
 
 // ---------- fontes de dados ----------
 async function fetchOsm(origin, radius) {
-  const filters = Object.entries(CATS).filter(([k]) => state.cats[k]).flatMap(([, c]) => c.osm);
+  const filters = [...new Set(Object.entries(CATS).filter(([k]) => state.cats[k]).flatMap(([, c]) => c.osm))];
   if (!filters.length) return [];
   const around = `(around:${radius},${origin.lat},${origin.lon})`;
   const q = `[out:json][timeout:60];(${filters.map((f) => {
@@ -135,7 +146,7 @@ async function fetchOsm(origin, radius) {
         id: `osm:${e.type}/${e.id}`, src: 'osm', name: t.name, cat: catFromOsm(t),
         catText: t.cuisine ? t.cuisine.replace(/_/g, ' ').replace(/;/g, ', ') : '',
         lat, lon, phone: t.phone || t['contact:phone'] || '', website: t.website || t['contact:website'] || '',
-        address: addr, hours: t.opening_hours || '',
+        address: addr, hours: hoursFromOsm(t.opening_hours),
       };
     })
     .filter(Boolean);
@@ -156,7 +167,7 @@ async function fetchPhoton(origin) {
     if (!pr.name || seen.has(id)) continue;
     const [lon, lat] = f.geometry.coordinates;
     seen.set(id, {
-      id, src: 'osm', name: pr.name, cat, catText: '', lat, lon, phone: '', website: '',
+      id, src: 'osm', name: pr.name, cat: classify(pr.name, cat), catText: '', lat, lon, phone: '', website: '',
       address: [pr.street, pr.housenumber].filter(Boolean).join(', ') + (pr.district ? ' - ' + pr.district : ''),
     });
   }
@@ -169,10 +180,10 @@ function fromScraperRow(r) {
   if (!isFinite(lat) || !isFinite(lon) || !name) return null;
   const key = r.place_id || r.cid || r.data_id || `${name}@${lat.toFixed(5)},${lon.toFixed(5)}`;
   return {
-    id: 'g:' + key, src: 'google', name, cat: catFromText((r.category || '') + ' ' + name), catText: r.category || '',
+    id: 'g:' + key, src: 'google', name, cat: classify((r.category || '') + ' ' + name), catText: r.category || '',
     lat, lon, phone: r.phone || '', website: r.website || '', address: r.address || '',
     rating: parseFloat(r.review_rating ?? r.rating) || null, reviews: parseInt(r.review_count ?? r.reviews, 10) || null,
-    link: r.link || '',
+    link: r.link || '', hours: hoursFromGoogle(r.open_hours),
   };
 }
 
@@ -188,7 +199,8 @@ async function loadRegion() {
   try {
     const r = await fetchJson('regiao-osm.json', { cache: 'no-cache' }, 20000);
     r.places = r.places.map(([id, name, cat, lat, lon, phone, website, address, cuisine, hours]) => ({
-      id, src: 'osm', name, cat, catText: cuisine, lat, lon, phone, website, address, hours,
+      id, src: 'osm', name, cat: classify(`${cuisine} ${name}`, CATS[cat] ? cat : 'restaurante'), catText: cuisine,
+      lat, lon, phone, website, address, hours: hoursFromOsm(hours),
     }));
     state.region = r;
   } catch { state.region = null; }
@@ -247,37 +259,37 @@ async function ttFetch(path, params, key) {
 // Os códigos numéricos de categoria da TomTom não são fixos na documentação: baixa a lista oficial
 // uma vez (1 busca) e escolhe os códigos pelo nome de cada categoria.
 async function ttCategories(key) {
-  const c = store.get('ttcats', null);
+  const c = store.get('ttcats2', null);
   if (c && Date.now() - c.t < 30 * 864e5) return c.byCat;
   const data = await ttFetch('poiCategories.json', { language: 'en-US' }, key);
   const byCat = Object.fromEntries(Object.entries(CATS).map(([k, cat]) =>
     [k, data.poiCategories.filter((pc) => cat.tt.test(pc.name)).map((pc) => pc.id)]));
-  store.set('ttcats', { t: Date.now(), byCat });
+  store.set('ttcats2', { t: Date.now(), byCat });
   return byCat;
 }
 
-// Categoria mais específica primeiro: "fast food" também fica dentro de "restaurant".
-const TT_ORDER = ['lanchonete', 'bar', 'padaria', 'acougue', 'cafe', 'restaurante'];
-function catFromTomTom(ids, byCat, text) {
-  return TT_ORDER.find((k) => byCat[k]?.some((id) => ids.includes(id))) || catFromText(text);
+// Tipo de um lugar da TomTom: palavras do nome/categorias primeiro; senão, o código de categoria.
+function ttClassify(p, byCat) {
+  const base = CAT_PRIORITY.find((k) => byCat?.[k]?.some((id) => p.catIds.includes(id))) || 'restaurante';
+  return classify(`${p.cats.join(' ')} ${p.name}`, base);
 }
 
 // Cache = lista de "círculos conhecidos": dentro de cada um já sabemos todos os lugares (da TomTom).
 // Vale para qualquer ponto de partida, então andar alguns quarteirões não gasta buscas de novo.
 function ttcacheLoad() {
   const limit = Date.now() - TT_CACHE_DAYS * 864e5;
-  const c = store.get('ttcache', []);
+  const c = store.get('ttcache2', []);
   return (Array.isArray(c) ? c : []).filter((d) => d.t > limit);
 }
 
-function ttPlace(r, byCat) {
+function ttPlace(r) {
   const poi = r.poi || {}, cats = poi.categories || [];
   const name = poi.name || '?', address = r.address?.freeformAddress || '';
   const url = poi.url ? (/^https?:/i.test(poi.url) ? poi.url : 'http://' + poi.url) : '';
   return {
-    id: 'tt:' + r.id, src: 'tomtom', live: true, name,
-    cat: catFromTomTom((poi.categorySet || []).map((c) => c.id), byCat, cats.join(' ') + ' ' + name),
+    id: 'tt:' + r.id, src: 'tomtom', live: true, name, cats, catIds: (poi.categorySet || []).map((c) => c.id),
     catText: cats[0] ? cats[0][0].toUpperCase() + cats[0].slice(1) : '',
+    hours: hoursFromTomTom(poi.openingHours),
     lat: r.position.lat, lon: r.position.lon, phone: poi.phone || '', website: url, address,
     // Nota e avaliações: abre a busca do lugar no Google Maps (grátis).
     link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + address)}`,
@@ -287,28 +299,31 @@ function ttPlace(r, byCat) {
 // A TomTom devolve só os 100 lugares mais próximos de cada ponto (sem paginar além disso). A cada passo,
 // busca no ponto ainda não coberto mais perto de você. Para quando os TT_TARGET mais próximos estão
 // garantidos, quando cobriu o raio todo ou quando acaba o limite do dia (aí falta só a parte mais distante).
-async function fetchTomTomLive(origin, radius) {
+async function fetchTomTomLive(origin, radius, keep) {
   const cfg = ttcfg();
   const byCat = await ttCategories(cfg.key);
-  const all = [...new Set(Object.keys(CATS).filter((k) => state.cats[k]).flatMap((k) => byCat[k] || []))];
+  const all = [...new Set(Object.keys(CATS).filter((k) => state.cats[k])
+    .flatMap((k) => (CATS[k].food ? byCat.restaurante : byCat[k]) || []))];
   // Subcategoria (7 dígitos) já vem junto com a categoria-mãe (4 dígitos): 7315015 ⊂ 7315.
   const ids = all.filter((id) => !(id >= 1e6 && all.includes(Math.floor(id / 1000)))).sort((a, b) => a - b);
   const out = { places: new Map(), calls: 0, cached: 0, truncated: false, enough: false };
   // A TomTom aceita no máximo 10 categorias por busca: divide em grupos se precisar.
   for (let g = 0; g < ids.length && !out.truncated; g += 10) {
-    await ttSearchGroup(origin, radius, ids.slice(g, g + 10).join(','), byCat, cfg, out);
+    await ttSearchGroup(origin, radius, ids.slice(g, g + 10).join(','), byCat, cfg, out, keep);
   }
-  out.places = [...out.places.values()];
+  out.places = [...out.places.values()].map((p) => ({ ...p, cat: ttClassify(p, byCat) }));
   return out;
 }
 
-async function ttSearchGroup(origin, radius, group, byCat, cfg, out) {
+async function ttSearchGroup(origin, radius, group, byCat, cfg, out, keep) {
   // Coordenadas planas em metros a partir de você (precisas o bastante para alguns km).
   const kx = 111320 * Math.cos(origin.lat * Math.PI / 180), ky = 111320;
   const xy = (p) => [(p.lon - origin.lon) * kx, (p.lat - origin.lat) * ky];
   const toLL = ([x, y]) => ({ lat: origin.lat + y / ky, lon: origin.lon + x / kx });
 
-  const disks = ttcacheLoad().filter((d) => d.group === group).map((d) => ({ ...d, c: xy(d) }))
+  // Uma busca com mais categorias também vale para um subconjunto delas.
+  const ids = group.split(',');
+  const disks = ttcacheLoad().filter((d) => ids.every((id) => d.group.split(',').includes(id))).map((d) => ({ ...d, c: xy(d) }))
     .filter((d) => Math.hypot(...d.c) - d.r < radius);
   out.cached += disks.length;
   const found = new Map();
@@ -335,24 +350,25 @@ async function ttSearchGroup(origin, radius, group, byCat, cfg, out) {
   for (;;) {
     const next = nearestUncovered();
     if (!next) break;                                   // raio todo coberto
-    const closer = [...found.values()].filter((p) => haversine(origin, p) < next.d).length;
+    // Conta só os que passam nos filtros (tipo e horário): com filtro apertado, busca mais longe.
+    const closer = [...found.values()].filter((p) => haversine(origin, p) < next.d && keep({ ...p, cat: ttClassify(p, byCat) })).length;
     if (closer >= TT_TARGET) { out.enough = true; break; }
-    if (ttusage().dayCalls >= cfg.daily) { out.truncated = true; break; }
+    if (ttusage().dayCalls >= cfg.daily || out.calls >= TT_MAX_CALLS) { out.truncated = true; break; }
     const pt = toLL(next.pt), qr = Math.round(radius + next.d);
     const data = await ttFetch('nearbySearch/.json', {
       lat: pt.lat.toFixed(6), lon: pt.lon.toFixed(6), radius: qr, limit: 100, categorySet: group,
-      language: 'pt-BR', countrySet: 'BR',
+      language: 'pt-BR', countrySet: 'BR', openingHours: 'nextSevenDays',
     }, cfg.key);
     out.calls++;
     const results = (data.results || []).filter((r) => r.position);
     const far = results.reduce((m, r) => Math.max(m, haversine(pt, r.position)), 0);
     const full = (data.summary?.totalResults ?? 0) >= 100;
-    const places = results.map((r) => ttPlace(r, byCat));
+    const places = results.map(ttPlace);
     // Vários lugares no mesmo prédio podem dar raio ~0: garante um mínimo para a busca sempre avançar.
     const disk = { lat: pt.lat, lon: pt.lon, r: full ? Math.max(25, far * 0.999) : qr, t: Date.now(), group, places };
     const cache = [...ttcacheLoad(), disk].slice(-TT_CACHE_MAX);
-    store.set('ttcache', cache);
-    if (store.get('ttcache', null)?.length !== cache.length) store.set('ttcache', cache.slice(-Math.floor(cache.length / 2)));
+    store.set('ttcache2', cache);
+    if (store.get('ttcache2', null)?.length !== cache.length) store.set('ttcache2', cache.slice(-Math.floor(cache.length / 2)));
     disks.push({ ...disk, c: next.pt });
     for (const p of places) found.set(p.id, p);
   }
@@ -440,7 +456,8 @@ function drawOrigin() {
 
 function popupHtml(p) {
   const m = state.marks[p.id];
-  return `<b>${esc(p.name)}</b><br>${esc(p.catText || CATS[p.cat]?.label || '')}`
+  return `<b>${esc(p.name)}</b><br>${esc(CATS[p.cat]?.label || '')}${p.catText ? ' · ' + esc(p.catText) : ''}`
+    + (p.hours ? `<br>${esc(describeHours(p.hours, new Date()))}` : '')
     + (p.rating ? `<br>⭐ ${p.rating} (${p.reviews || 0})` : '')
     + (p.phone ? `<br><a href="tel:${esc(p.phone)}">${esc(p.phone)}</a>` : '')
     + (m?.s ? `<br><i>${STATUS[m.s]}</i>` : '')
@@ -521,10 +538,12 @@ async function buildRoute() {
   try {
     await regionReady;
     const cfg = ttcfg();
+    const when = horarioAlvo();
+    const keep = (p) => state.cats[p.cat] && passaHorario(p, when);
     let live = null;
     if (cfg.on && cfg.key) {
       btn.textContent = '⏳ Buscando na TomTom...';
-      try { live = await fetchTomTomLive(state.origin, radius); } catch (e) {
+      try { live = await fetchTomTomLive(state.origin, radius, keep); } catch (e) {
         console.warn(e);
         toast(e.message + ' — usando a base do OpenStreetMap.', 7000);
       }
@@ -533,9 +552,9 @@ async function buildRoute() {
     const saved = !live && inRegion(state.origin);
     if (live) {
       // TomTom ao vivo substitui o OpenStreetMap (que pode estar desatualizado).
-      osm = live.places.filter((p) => state.cats[p.cat]);
+      osm = live.places;
     } else if (saved) {
-      osm = state.region.places.filter((p) => state.cats[p.cat]);
+      osm = state.region.places;
     } else {
       try { osm = await fetchOsm(state.origin, radius); } catch (e) {
         console.warn('Overpass falhou, usando Photon', e);
@@ -543,35 +562,39 @@ async function buildRoute() {
         osm = await fetchPhoton(state.origin);
       }
     }
-    const google = scraperPlaces()
-      .filter((p) => state.cats[p.cat] !== false)
-      .map((p) => ({ ...p }));
-    const all = merge(osm, google)
+    const google = scraperPlaces().map((p) => ({ ...p }));
+    const inRadius = merge(osm, google)
       .map((p) => ({ ...p, dist: haversine(state.origin, p) }))
-      .filter((p) => p.dist <= radius)
-      .sort((a, b) => a.dist - b.dist);
+      .filter((p) => p.dist <= radius);
+    const all = inRadius.filter(keep).sort((a, b) => a.dist - b.dist);
     state.nearby = all;
+    state.when = when;
 
     const nG = all.filter((p) => p.src === 'google').length;
     const nLive = all.filter((p) => p.live).length;
     const updated = saved ? state.region.updated.split('-').reverse().join('/') : '';
+    const semInfo = when ? all.filter((p) => !p.hours).length : 0;
+    const filtroTxt = (when ? ` · ${all.length - semInfo} abertos ${descreveAlvo(when)}`
+      + (semInfo ? ` + ${semInfo} sem horário informado` : '') : '')
+      + (inRadius.length > all.length ? ` · ${inRadius.length - all.length} fora dos filtros` : '');
     $('#txtFonte').textContent = live
       ? `${nLive} da TomTom ao vivo (${live.calls} buscas novas, ${live.cached} do cache · `
         + `hoje ${ttusage().dayCalls}/${cfg.daily}) · ${nG} do scraper (Google Maps)`
         + (live.enough ? ` · mostrando os ${TT_TARGET} mais próximos para economizar buscas` : '')
-        + (live.truncated ? ' · ⚠️ limite diário atingido: a lista pode estar incompleta' : '')
+        + (live.truncated ? ' · ⚠️ limite de buscas atingido: a parte mais distante pode estar incompleta' : '')
       : `${all.length - nG} do OpenStreetMap`
       + (saved ? ` (base salva de ${state.region.name}, ${updated})` : '')
       + ` · ${nG} do scraper (Google Maps)`
       + (fallback ? ' · ⚠️ OpenStreetMap lento: busca reduzida, tente de novo mais tarde' : '')
       + (all.length < 30 && !nG && !fallback ? ' · ⚠️ O OpenStreetMap tem poucos lugares cadastrados nesta região. '
         + 'Para ver todos, use os dados do Google Maps (scraper): menu ⋯ → Importar CSV.' : '');
+    $('#txtFonte').textContent += filtroTxt;
 
     const cands = all.slice(0, MAX_STOPS);
     if (!cands.length) {
       state.route = null;
       render();
-      return toast('Nenhum restaurante encontrado. Aumente o raio.');
+      return toast(inRadius.length ? 'Nenhum lugar passa nos filtros. Mude o tipo ou o horário.' : 'Nenhum restaurante encontrado. Aumente o raio.');
     }
 
     btn.textContent = '⏳ Calculando a melhor rota...';
@@ -592,15 +615,44 @@ async function buildRoute() {
   }
 }
 
+// ---------- filtro de horário ----------
+const sameDay = (a, b) => a.toDateString() === b.toDateString();
+
+// Data/hora que o lugar precisa estar aberto, ou null (qualquer horário).
+function horarioAlvo() {
+  const h = state.horario;
+  if (h.modo === 'agora') return new Date();
+  if (h.modo !== 'hora') return null;
+  const d = new Date();
+  d.setDate(d.getDate() + (+h.dia || 0));
+  const [hh, mm] = (h.hora || '10:00').split(':').map(Number);
+  d.setHours(hh, mm, 0, 0);
+  return d;
+}
+function passaHorario(p, when) {
+  if (!when) return true;
+  const o = openAt(p.hours, when);
+  return o === true || (o === null && state.horario.semInfo);
+}
+function descreveAlvo(when) {
+  if (state.horario.modo === 'agora') return 'agora';
+  const dia = sameDay(when, new Date()) ? 'hoje' : DIAS[when.getDay()];
+  return `${dia} às ${String(when.getHours()).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}`;
+}
+
 // ---------- lista ----------
 function itemHtml(p, idx, leg) {
   const m = state.marks[p.id] || {};
   const meta = [
-    p.catText || CATS[p.cat]?.label,
+    CATS[p.cat]?.label + (p.catText && fold(p.catText) !== fold(CATS[p.cat]?.label) ? ` (${p.catText})` : ''),
     p.rating ? `⭐ ${p.rating}${p.reviews ? ` (${p.reviews})` : ''}` : '',
     leg ? `+${fmtDist(leg.m)} · ${Math.max(1, Math.round(leg.s / 60))} min` : fmtDist(p.dist),
     p.closedNow ? '⚠️ fechado temporariamente' : '',
   ].filter(Boolean).join(' · ');
+  const now = new Date();
+  const hor = p.hours ? `${describeHours(p.hours, now)} · hoje ${hoursOfDay(p.hours, now)}`
+    + (state.when && !sameDay(state.when, now) ? ` · ${DIAS[state.when.getDay()]} ${hoursOfDay(p.hours, state.when)}` : '')
+    : 'Horário não informado';
   return `<li class="item${state.selected === p.id ? ' sel' : ''}" data-id="${esc(p.id)}" data-st="${m.s || ''}">
     <div class="item-top">
       <span class="num${idx ? '' : ' dot'}">${idx || '•'}</span>
@@ -608,6 +660,7 @@ function itemHtml(p, idx, leg) {
         <h3 data-act="focus">${esc(p.name)}</h3>
         <div class="meta">${esc(meta)}</div>
         ${p.address ? `<div class="meta">${esc(p.address)}</div>` : ''}
+        <div class="meta hor${p.hours ? '' : ' unknown'}">${esc(hor)}</div>
       </div>
     </div>
     <div class="acts">
@@ -679,7 +732,8 @@ function exportCsv() {
   const r = state.route;
   if (!r) return;
   const rows = r.stops.map((p, i) => ({
-    ordem: i + 1, nome: p.name, categoria: p.catText || CATS[p.cat]?.label, endereco: p.address, telefone: p.phone,
+    ordem: i + 1, nome: p.name, tipo: CATS[p.cat]?.label, categoria: p.catText, endereco: p.address, telefone: p.phone,
+    horario_hoje: p.hours ? hoursOfDay(p.hours, new Date()) : '',
     nota_google: p.rating ?? '', avaliacoes: p.reviews ?? '', status: STATUS[state.marks[p.id]?.s] || '',
     anotacao: state.marks[p.id]?.n || '', latitude: p.lat, longitude: p.lon, google_maps: navUrl(p),
   }));
@@ -732,7 +786,41 @@ $('#chipsCat').addEventListener('click', (e) => {
   state.cats[k] = !state.cats[k];
   store.set('cats', state.cats);
   renderChips();
+  refazerRota();
 });
+
+// Mudou um filtro depois de já ter uma rota: refaz (as buscas da TomTom vêm do cache).
+let refazerTimer;
+function refazerRota() {
+  if (!state.origin || (!state.nearby.length && !state.route)) return;
+  clearTimeout(refazerTimer);
+  refazerTimer = setTimeout(buildRoute, 600);
+}
+
+function renderHorario() {
+  const h = state.horario, hoje = new Date();
+  $('#selDia').innerHTML = [0, 1, 2, 3, 4, 5, 6].map((i) => {
+    const d = new Date(hoje);
+    d.setDate(hoje.getDate() + i);
+    const nome = i === 0 ? 'Hoje' : i === 1 ? 'Amanhã' : DIAS[d.getDay()];
+    return `<option value="${i}">${nome} (${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')})</option>`;
+  }).join('');
+  $('#selHorario').value = h.modo;
+  $('#selDia').value = String(h.dia);
+  $('#txtHora').value = h.hora;
+  $('#chkSemInfo').checked = h.semInfo;
+  $('#rowHora').classList.toggle('hidden', h.modo !== 'hora');
+  $('#rowSemInfo').classList.toggle('hidden', h.modo === 'qualquer');
+}
+['#selHorario', '#selDia', '#txtHora', '#chkSemInfo'].forEach((sel) => $(sel).addEventListener('change', () => {
+  state.horario = {
+    modo: $('#selHorario').value, dia: +$('#selDia').value, hora: $('#txtHora').value || '10:00',
+    semInfo: $('#chkSemInfo').checked,
+  };
+  store.set('horario', state.horario);
+  renderHorario();
+  refazerRota();
+}));
 
 $('#btnGps').addEventListener('click', () => {
   if (!navigator.geolocation) return toast('Seu navegador não tem GPS.');
@@ -810,8 +898,8 @@ $('#btnMenu').addEventListener('click', () => {
   if ($('#chkTT').checked && !$('#txtTTKey').value.trim() && !SITE_TT_KEY) toast('Cole a chave da TomTom para ativar.');
 }));
 $('#btnTTCache').addEventListener('click', () => {
-  store.set('ttcache', []);
-  store.set('ttcats', null);
+  store.set('ttcache2', []);
+  store.set('ttcats2', null);
   updateTomTomInfo();
   toast('Cache da TomTom limpo.');
 });
@@ -841,6 +929,7 @@ $('#fileBackup').addEventListener('change', async (e) => {
 
 // ---------- início ----------
 renderChips();
+renderHorario();
 if (state.origin) setOrigin(state.origin.lat, state.origin.lon, state.origin.label);
 render();
 loadBundled();

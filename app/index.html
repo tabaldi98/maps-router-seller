@@ -45,8 +45,21 @@
             <option value="100000">100 km</option>
           </select>
         </label>
+        <span class="lbl sub">Tipo de estabelecimento</span>
         <div class="chips" id="chipsCat"></div>
-        <p class="hint">A rota passa pelos 99 mais próximos (limite do serviço de rotas).</p>
+        <label class="lbl sub">Funcionamento
+          <select id="selHorario">
+            <option value="qualquer">Qualquer horário</option>
+            <option value="agora">Aberto agora</option>
+            <option value="hora">Aberto em um dia e horário…</option>
+          </select>
+        </label>
+        <div class="grid2 hidden" id="rowHora">
+          <select id="selDia" aria-label="Dia"></select>
+          <input type="time" id="txtHora" aria-label="Horário" value="10:00">
+        </div>
+        <label class="check hidden" id="rowSemInfo"><input type="checkbox" id="chkSemInfo" checked> Incluir quem não informa horário</label>
+        <p class="hint">A rota passa pelos 99 mais próximos que passam nos filtros (limite do serviço de rotas).</p>
         <div class="row">
           <button id="btnRota" class="primary wide" disabled>🚗 Buscar restaurantes e montar rota</button>
         </div>
@@ -121,6 +134,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
   <script src="config.js"></script>
+  <script src="horarios.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

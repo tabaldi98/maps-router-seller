@@ -14,7 +14,7 @@ import os
 import sys
 
 KEEP = ["title", "category", "address", "phone", "website", "review_rating", "review_count",
-        "latitude", "longitude", "place_id", "cid", "link"]
+        "latitude", "longitude", "place_id", "cid", "link", "open_hours"]
 OUT = os.path.join(os.path.dirname(__file__), "..", "app", "restaurantes.json")
 
 

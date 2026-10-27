@@ -22,11 +22,12 @@ MIRRORS = [
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 ]
-# Same category keys as CATS in app/app.js.
+# Base category per OSM tag; app/app.js refines it (pizzaria, japonês...) from cuisine and name.
 TAGS = {
     "restaurante": [("amenity", "restaurant"), ("amenity", "food_court")],
     "lanchonete": [("amenity", "fast_food")],
     "bar": [("amenity", "bar"), ("amenity", "pub"), ("amenity", "biergarten")],
+    "sorveteria": [("amenity", "ice_cream")],
     "padaria": [("shop", "bakery"), ("shop", "pastry")],
     "cafe": [("amenity", "cafe")],
     "acougue": [("shop", "butcher")],
